@@ -1,0 +1,11 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+
+# Deploy ArcTreasury to Sepolia:
+#   PRIVATE_KEY=0x... forge script script/DeployYudha.s.sol:DeployYudha --rpc-url $RPC_URL --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY
+# Then set ARC_TREASURY_ADDRESS in ai-backend/.env and frontend .env
+
+[etherscan]
+sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.etherscan.io/api" }

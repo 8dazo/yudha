@@ -1,0 +1,14 @@
+---
+description: Project rules for Yudha (PsycheFi)
+globs: **/*
+---
+
+# Yudha Project Rules
+
+- **Tech Stack**: Node.js backend, Next.js frontend, Solidity (Foundry) contracts.
+- **Integrations**: Yellow Network, Uniswap v4, LI.FI, Arc.
+- **AI**: Use OpenRouter for AI agent logic.
+- **Testing**: Implement actual testnet verification steps. No mocking of core protocol logic in production-ready components.
+- **Backend**: Prefer Express or Fastify for the Node.js backend.
+- **Frontend**: Use Tailwind CSS and shadcn/ui for styling.
+- **Architecture**: Keep a clear separation between `ai-backend`, `contracts`, and `frontend`.
