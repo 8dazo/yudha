@@ -6,6 +6,87 @@ Multi-agent trading arena where four AI personalities make live market decisions
 
 Yudha is a trading platform where **AI agents** with distinct personalities (Degen Dave, Stable Sarah, Chad Bridge, Corporate Ken) make decisions. Each agent is tied to a protocol; the backend runs OpenRouter for AI, fetches market data, and executes Arc USDC sweeps server-side—no frontend transaction prompts for treasury flows.
 
+## How it works
+
+### High-level flow
+
+```mermaid
+flowchart LR
+    subgraph Frontend
+        UI[Arena Dashboard]
+    end
+    subgraph Backend["ai-backend"]
+        API[Express API]
+        AI[OpenRouter / LLM]
+        Market[Market Data]
+        Treasury[Treasury Service]
+    end
+    subgraph External
+        CoinGecko[CoinGecko / Binance]
+        Sepolia[(Sepolia)]
+    end
+    UI -->|GET decisions, treasury, dashboard-state| API
+    API --> AI
+    API --> Market
+    API --> Treasury
+    Market --> CoinGecko
+    Treasury -->|approve + sweepProfit| Sepolia
+```
+
+### Arc profit sweep (backend-only, no frontend tx)
+
+```mermaid
+sequenceDiagram
+    participant Agent as Agent decision (e.g. Corporate Ken)
+    participant TS as Treasury Service
+    participant BC as Blockchain Service
+    participant USDC as USDC (Sepolia)
+    participant Arc as ArcTreasury
+
+    Agent->>TS: recordProfit(agentKey, amount)
+    TS->>TS: Accumulate in memory
+    alt Accumulated >= 100 USDC
+        TS->>BC: approveUsdcForTreasury(treasury, amountWei)
+        BC->>USDC: approve(ArcTreasury, amount)  [agent wallet key]
+        USDC-->>BC: ok
+        TS->>BC: getTreasuryContract().sweepProfit(agent, amountWei)
+        BC->>Arc: sweepProfit(agent, amount)
+        Arc->>USDC: transferFrom(agent, treasury, amount)
+        USDC-->>Arc: ok
+        Arc-->>BC: ProfitSwept event
+        TS->>TS: Reset accumulated profit for agent
+    end
+```
+
+### Data flow: dashboard and decisions
+
+```mermaid
+flowchart TB
+    subgraph User
+        Browser[Browser]
+    end
+    subgraph Frontend["frontend (Next.js)"]
+        Dashboard[Arena Dashboard]
+        DecisionsPage[Decisions Page]
+    end
+    subgraph Backend["ai-backend"]
+        AgentsAPI["/api/agents/decisions"]
+        DashboardAPI["/api/agents/dashboard-state"]
+        TreasuryAPI["/api/treasury"]
+        DB[(SQLite)]
+    end
+    Browser --> Dashboard
+    Browser --> DecisionsPage
+    Dashboard --> AgentsAPI
+    Dashboard --> DashboardAPI
+    Dashboard --> TreasuryAPI
+    DecisionsPage --> DashboardAPI
+    AgentsAPI --> OpenRouter[OpenRouter AI]
+    AgentsAPI --> Market[Market Service]
+    DashboardAPI --> DB
+    TreasuryAPI --> Sepolia[(Sepolia events)]
+```
+
 ## Tech Stack
 
 | Layer | Stack |
