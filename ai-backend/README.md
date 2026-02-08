@@ -13,7 +13,9 @@ Express API for the AI agent arena: OpenRouter decisions, market data, and Arc t
 | `RPC_URL` | For treasury | Sepolia RPC (e.g. publicnode). |
 | `TREASURY_OWNER_PRIVATE_KEY` | For sweep | Owner of ArcTreasury. |
 | `ARC_TREASURY_ADDRESS` | For sweep | Deployed ArcTreasury contract. |
-| `AGENT_WALLET` | For sweep | Wallet that holds USDC and has approved the treasury. |
+| `ARENA_TREASURY_ADDRESS` | For play token | Deployed ArenaTreasury (Arena token). Deploy + mint: `node scripts/deploy-arena-and-mint.js`. |
+| `AGENT_WALLET` | For sweep | Wallet that holds USDC (address). |
+| `AGENT_WALLET_PRIVATE_KEY` | For sweep | Private key for AGENT_WALLET; backend approves USDC then calls sweep on Sepolia. Can use `ACCOUNT_2_PRIVATE_KEY`. |
 
 ## Market data (free, no key)
 

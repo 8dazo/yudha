@@ -68,9 +68,12 @@ async function fetchLivePrice() {
 /**
  * Mock market data (fallback when live API fails).
  */
+const FALLBACK_PRICE_MIN = 500;
+const FALLBACK_PRICE_MAX = 50000;
+
 function getMockMarketData() {
     const change = (Math.random() - 0.48) * fallbackPrice * fallbackVolatility;
-    fallbackPrice += change;
+    fallbackPrice = Math.max(FALLBACK_PRICE_MIN, Math.min(FALLBACK_PRICE_MAX, fallbackPrice + change));
     fallbackVolatility = Math.max(0.01, Math.min(0.05, fallbackVolatility + (Math.random() - 0.5) * 0.005));
     return {
         price: parseFloat(fallbackPrice.toFixed(2)),

@@ -1,18 +1,19 @@
-const { getTreasuryContract, isBlockchainEnabled, getProfitSweptEvents } = require('./blockchainService');
+const { getTreasuryContract, isBlockchainEnabled, getProfitSweptEvents, approveUsdcForTreasury } = require('./blockchainService');
+const config = require('../config');
 
 const USDC_DECIMALS = 6;
 
 /**
  * Treasury Manager for Arc (USDC).
  * Sweeps profits from agents into the central treasury.
- * When ARC_TREASURY_ADDRESS and TREASURY_OWNER_PRIVATE_KEY are set, sweeps on-chain.
+ * When ENABLE_ONCHAIN_SWEEP is on and RPC + treasury + keys are set, sweeps on-chain.
  */
 class TreasuryManager {
     constructor() {
-        this.treasuryAddress = process.env.ARC_TREASURY_ADDRESS || '0x';
+        this.treasuryAddress = config.ARC_TREASURY_ADDRESS || '0x';
         this.usdcAddress = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'; // Official Circle USDC on Sepolia
         this.profits = {};
-        this.agentWallet = process.env.AGENT_WALLET || null; // Wallet that holds USDC and has approved treasury
+        this.agentWallet = config.AGENT_WALLET || null; // Wallet that holds USDC and has approved treasury
     }
 
     /**
@@ -44,6 +45,13 @@ class TreasuryManager {
                     console.log(`[Arc] SWEEP skipped: no treasury contract (missing RPC/signer).`);
                     return;
                 }
+                // Agent must approve ArcTreasury to spend USDC before sweepProfit (Sepolia).
+                const approval = await approveUsdcForTreasury(this.treasuryAddress, amountWei);
+                if (!approval.success) {
+                    console.error('[Arc] SWEEP failed (approval):', approval.error);
+                    return;
+                }
+                if (approval.txHash) console.log(`[Arc] USDC approve tx: ${approval.txHash}`);
                 const tx = await contract.sweepProfit(agentAddress, amountWei);
                 console.log(`[Arc] SWEEP tx submitted: ${tx.hash}`);
                 const receipt = await tx.wait();
@@ -52,7 +60,7 @@ class TreasuryManager {
                 console.error('[Arc] SWEEP failed:', err.message);
             }
         } else {
-            console.log(`[Arc] SWEEP (simulated) ${amount} USDC from ${agentKey} to Treasury. Set RPC_URL, TREASURY_OWNER_PRIVATE_KEY, ARC_TREASURY_ADDRESS, AGENT_WALLET for on-chain sweep.`);
+            console.log(`[Arc] SWEEP (simulated) ${amount} USDC from ${agentKey} to Treasury. Set RPC_URL, TREASURY_OWNER_PRIVATE_KEY (or ACCOUNT_1_PRIVATE_KEY), ARC_TREASURY_ADDRESS, AGENT_WALLET (or ACCOUNT_2_ADDRESS), and ENABLE_ONCHAIN_SWEEP=true for on-chain sweep.`);
         }
     }
 

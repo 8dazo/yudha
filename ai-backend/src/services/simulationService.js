@@ -20,7 +20,12 @@ async function simulateSweep(treasuryAddress, agentAddress, amountUsdc) {
         const gas = await contract.sweepProfit.estimateGas(agentAddress, amountWei);
         return { success: true, gasEstimate: gas.toString() };
     } catch (err) {
-        return { success: false, error: err.message || 'Simulation failed' };
+        const msg = err.message || 'Simulation failed';
+        const isRevert = msg.includes('revert') || msg.includes('reverted') || err.code === 'CALL_EXCEPTION';
+        const friendly = isRevert
+            ? 'Agent wallet needs USDC balance and approval for the treasury contract.'
+            : msg;
+        return { success: false, error: friendly };
     }
 }
 

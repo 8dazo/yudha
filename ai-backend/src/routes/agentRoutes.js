@@ -1,10 +1,108 @@
 const express = require('express');
 const router = express.Router();
+const config = require('../config');
 const { getAgentDecision } = require('../services/openRouterService');
 const { getMarketData } = require('../services/marketService');
 const treasuryService = require('../services/treasuryService');
-const { simulateDecision } = require('../services/simulationService');
+const { deductPlay, getArenaBalance } = require('../services/blockchainService');
 const personalities = require('../agents/personalities');
+const db = require('../db');
+
+// Static routes MUST come before /:agentKey/decision so they are not matched as agentKey
+// Dashboard state from SQL (per-agent chart + decisions for frontend hydration)
+router.get('/dashboard-state', (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+        const state = db.getDashboardState(limit);
+        res.json(state);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get all agent personalities
+router.get('/personalities', (req, res) => {
+    res.json(personalities);
+});
+
+// Get decisions for all agents (batch) - one agent at a time: fetch market, decide, deduct, persist, then next
+// Each agent gets its own market snapshot so charts and state can differ per agent
+router.get('/decisions', async (req, res) => {
+    const keys = Object.keys(personalities);
+    try {
+        const arenaAddress = config.ARENA_TREASURY_ADDRESS;
+        const playerWallet = config.AGENT_WALLET;
+        let remainingBalance = 0;
+        if (arenaAddress && playerWallet) {
+            remainingBalance = await getArenaBalance(arenaAddress, playerWallet);
+        }
+
+        const results = [];
+        for (const agentKey of keys) {
+            const agent = personalities[agentKey];
+            try {
+                // Fresh market data per agent so each sees current state and charts differ
+                const marketData = await getMarketData();
+                const marketSnapshotId = db.insertMarketSnapshot({
+                    price: marketData.price,
+                    change24h: marketData.change24h,
+                    volatility: marketData.volatility,
+                    source: marketData.source,
+                });
+
+                const decision = await getAgentDecision(agent.personality, marketData, remainingBalance);
+                const requestedAmount = Number(decision.amount) || 0;
+
+                let playDeducted = null;
+                if (decision.action !== 'HOLD' && !Number.isNaN(requestedAmount) && requestedAmount > 0) {
+                    treasuryService.recordProfit(agentKey, requestedAmount);
+                    if (arenaAddress && playerWallet) {
+                        const amountToDeduct = Math.min(requestedAmount, Math.max(0, remainingBalance));
+                        if (amountToDeduct > 0) {
+                            const result = await deductPlay(arenaAddress, playerWallet, amountToDeduct);
+                            if (result.success) {
+                                playDeducted = amountToDeduct;
+                                db.insertTreasuryEvent({ event_type: 'play_deduct', wallet: playerWallet, amount: amountToDeduct, tx_hash: result.txHash });
+                                remainingBalance -= amountToDeduct;
+                            }
+                        }
+                    }
+                }
+
+                db.insertDecision({
+                    agent_key: agentKey,
+                    agent_name: agent.name,
+                    protocol: agent.protocol,
+                    action: decision.action,
+                    amount: requestedAmount,
+                    thought: decision.thought,
+                    market_snapshot_id: marketSnapshotId,
+                    play_deducted: playDeducted,
+                });
+
+                if (agentKey === 'CHAD_BRIDGE' && decision.action !== 'HOLD' && requestedAmount > 0 && playerWallet) {
+                    db.insertTreasuryEvent({ event_type: 'bridge_requested', wallet: playerWallet, amount: String(requestedAmount), tx_hash: null });
+                }
+
+                results.push({
+                    agentKey,
+                    name: agent.name,
+                    protocol: agent.protocol,
+                    decision,
+                    market: marketData,
+                });
+            } catch (err) {
+                console.warn('[agents/decisions] Agent failed:', agentKey, err.message);
+                results.push({ agentKey, name: agent.name, protocol: agent.protocol, error: err.message });
+            }
+        }
+
+        res.json({ agents: results });
+    } catch (error) {
+        console.error('[agents/decisions] Batch failed:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // Get decision for a specific agent
 router.get('/:agentKey/decision', async (req, res) => {
@@ -17,77 +115,59 @@ router.get('/:agentKey/decision', async (req, res) => {
 
     try {
         const marketData = await getMarketData();
-        const decision = await getAgentDecision(agent.personality, marketData);
+        const arenaAddress = config.ARENA_TREASURY_ADDRESS;
+        const playerWallet = config.AGENT_WALLET;
+        let playBalanceArena = null;
+        if (arenaAddress && playerWallet) {
+            playBalanceArena = await getArenaBalance(arenaAddress, playerWallet);
+        }
 
-        // Record profit from decision amount (real threshold -> real sweep when blockchain enabled)
-        if (decision.action !== 'HOLD') {
-            const amount = Number(decision.amount);
-            if (!Number.isNaN(amount) && amount > 0) {
-                treasuryService.recordProfit(agentKey, amount);
+        const decision = await getAgentDecision(agent.personality, marketData, playBalanceArena);
+        const requestedAmount = Number(decision.amount) || 0;
+
+        let playDeducted = null;
+        if (decision.action !== 'HOLD' && !Number.isNaN(requestedAmount) && requestedAmount > 0) {
+            treasuryService.recordProfit(agentKey, requestedAmount);
+            if (arenaAddress && playerWallet && playBalanceArena != null) {
+                const amountToDeduct = Math.min(requestedAmount, Math.max(0, playBalanceArena));
+                if (amountToDeduct > 0) {
+                    const result = await deductPlay(arenaAddress, playerWallet, amountToDeduct);
+                    if (result.success) {
+                        playDeducted = amountToDeduct;
+                        db.insertTreasuryEvent({ event_type: 'play_deduct', wallet: playerWallet, amount: amountToDeduct, tx_hash: result.txHash });
+                    }
+                }
             }
         }
 
-        const payload = {
+        // Persist to SQL (requested amount so log shows what AI said; play_deducted = actual deducted)
+        try {
+            const marketSnapshotId = db.insertMarketSnapshot({
+                price: marketData.price,
+                change24h: marketData.change24h,
+                volatility: marketData.volatility,
+                source: marketData.source,
+            });
+            db.insertDecision({
+                agent_key: agentKey,
+                agent_name: agent.name,
+                protocol: agent.protocol,
+                action: decision.action,
+                amount: requestedAmount,
+                thought: decision.thought,
+                market_snapshot_id: marketSnapshotId,
+                play_deducted: playDeducted,
+            });
+        } catch (err) {
+            console.warn('[DB] Persist decision failed:', err.message);
+        }
+
+        res.json({
             agent: agent.name,
             protocol: agent.protocol,
             market: marketData,
             decision,
-        };
-
-        const treasuryAddress = process.env.ARC_TREASURY_ADDRESS;
-        const agentWallet = process.env.AGENT_WALLET;
-        if (treasuryAddress && agentWallet) {
-            const sweepPreview = await simulateDecision(decision, agentWallet, treasuryAddress);
-            if (sweepPreview) payload.sweepPreview = sweepPreview;
-        }
-
-        res.json(payload);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Get all agent personalities
-router.get('/personalities', (req, res) => {
-    res.json(personalities);
-});
-
-// Get decisions for all agents (batch, for dashboard)
-router.get('/decisions', async (req, res) => {
-    const keys = Object.keys(personalities);
-    const treasuryAddress = process.env.ARC_TREASURY_ADDRESS;
-    const agentWallet = process.env.AGENT_WALLET;
-    try {
-        const { getMarketData } = require('../services/marketService');
-        const marketData = await getMarketData();
-        const results = await Promise.all(
-            keys.map(async (agentKey) => {
-                const agent = personalities[agentKey];
-                try {
-                    const decision = await getAgentDecision(agent.personality, marketData);
-                    if (decision.action !== 'HOLD') {
-                        const amount = Number(decision.amount);
-                        if (!Number.isNaN(amount) && amount > 0) {
-                            treasuryService.recordProfit(agentKey, amount);
-                        }
-                    }
-                    let sweepPreview = null;
-                    if (treasuryAddress && agentWallet) {
-                        sweepPreview = await simulateDecision(decision, agentWallet, treasuryAddress);
-                    }
-                    return {
-                        agentKey,
-                        name: agent.name,
-                        protocol: agent.protocol,
-                        decision,
-                        sweepPreview,
-                    };
-                } catch (err) {
-                    return { agentKey, name: agent.name, protocol: agent.protocol, error: err.message };
-                }
-            })
-        );
-        res.json({ market: marketData, agents: results });
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

@@ -1,15 +1,29 @@
 const { ethers } = require('ethers');
+const config = require('../config');
 
-const RPC_URL = process.env.RPC_URL;
-const TREASURY_OWNER_PRIVATE_KEY = process.env.TREASURY_OWNER_PRIVATE_KEY;
+const RPC_URL = config.RPC_URL;
+const TREASURY_OWNER_PRIVATE_KEY = config.TREASURY_OWNER_PRIVATE_KEY;
+const AGENT_WALLET_PRIVATE_KEY = config.AGENT_WALLET_PRIVATE_KEY;
 
 let provider = null;
 let treasurySigner = null;
+let agentSigner = null;
+
+/** Official Circle USDC on Sepolia (same as ArcTreasury.sol) */
+const USDC_SEPOLIA = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
+
+const ERC20_APPROVE_ABI = ['function approve(address spender, uint256 amount) returns (bool)'];
 
 const ARC_TREASURY_ABI = [
     'function sweepProfit(address _agent, uint256 _amount) external',
     'function owner() view returns (address)',
     'event ProfitSwept(address indexed agent, uint256 amount)',
+];
+
+const ARENA_TREASURY_ABI = [
+    'function deductPlay(address player, uint256 amount) external',
+    'function balanceOf(address account) view returns (uint256)',
+    'function decimals() view returns (uint8)',
 ];
 
 /**
@@ -38,6 +52,38 @@ function getTreasurySigner() {
 }
 
 /**
+ * Get signer for agent wallet (holds USDC; must approve treasury for sweepProfit).
+ * @returns {ethers.Wallet|null}
+ */
+function getAgentSigner() {
+    if (!AGENT_WALLET_PRIVATE_KEY || !RPC_URL) return null;
+    if (!agentSigner) {
+        const p = getProvider();
+        agentSigner = new ethers.Wallet(AGENT_WALLET_PRIVATE_KEY, p);
+    }
+    return agentSigner;
+}
+
+/**
+ * Have the agent wallet approve the ArcTreasury to spend USDC (required before sweepProfit on Sepolia).
+ * @param {string} treasuryAddress - ArcTreasury contract address
+ * @param {bigint} amountWei - Amount in USDC base units (6 decimals)
+ * @returns {Promise<{ success: boolean, txHash?: string, error?: string }>}
+ */
+async function approveUsdcForTreasury(treasuryAddress, amountWei) {
+    const signer = getAgentSigner();
+    if (!signer) return { success: false, error: 'Agent signer not configured (AGENT_WALLET_PRIVATE_KEY or ACCOUNT_2_PRIVATE_KEY)' };
+    const usdc = new ethers.Contract(USDC_SEPOLIA, ERC20_APPROVE_ABI, signer);
+    try {
+        const tx = await usdc.approve(treasuryAddress, amountWei);
+        const receipt = await tx.wait();
+        return { success: true, txHash: receipt.hash };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
+/**
  * Get ArcTreasury contract instance (read-only or with signer).
  * @param {string} treasuryAddress - Deployed ArcTreasury address
  * @param {boolean} withSigner - If true, use treasury owner signer for writes
@@ -52,10 +98,15 @@ function getTreasuryContract(treasuryAddress, withSigner = false) {
 }
 
 /**
- * Check if blockchain features are enabled (RPC + treasury owner key + treasury address).
+ * Check if blockchain features are enabled and on-chain sweep is allowed.
  */
 function isBlockchainEnabled() {
-    return !!(RPC_URL && TREASURY_OWNER_PRIVATE_KEY && process.env.ARC_TREASURY_ADDRESS);
+    return !!(
+        config.ENABLE_ONCHAIN_SWEEP &&
+        RPC_URL &&
+        TREASURY_OWNER_PRIVATE_KEY &&
+        config.ARC_TREASURY_ADDRESS
+    );
 }
 
 /**
@@ -87,10 +138,72 @@ async function getProfitSweptEvents(treasuryAddress, fromBlock, toBlock) {
     }
 }
 
+/**
+ * Get ArenaTreasury (play token) contract.
+ * @param {string} arenaAddress - Deployed ArenaTreasury address
+ * @param {boolean} withSigner - If true, use treasury owner signer for writes (deductPlay)
+ * @returns {ethers.Contract|null}
+ */
+function getArenaContract(arenaAddress, withSigner = false) {
+    if (!arenaAddress || arenaAddress === '0x') return null;
+    const p = getProvider();
+    if (!p) return null;
+    const signer = withSigner ? getTreasurySigner() : null;
+    return new ethers.Contract(arenaAddress, ARENA_TREASURY_ABI, signer || p);
+}
+
+const ARENA_DECIMALS = 6;
+
+/**
+ * Get a player's Arena (play token) balance in human units (6 decimals).
+ * @param {string} arenaAddress - ArenaTreasury address
+ * @param {string} playerAddress - Wallet to query
+ * @returns {Promise<number>} Balance in whole units, or 0 if not configured / error
+ */
+async function getArenaBalance(arenaAddress, playerAddress) {
+    if (!arenaAddress || arenaAddress === '0x' || !playerAddress) return 0;
+    const contract = getArenaContract(arenaAddress, false);
+    if (!contract) return 0;
+    try {
+        const balanceWei = await contract.balanceOf(playerAddress);
+        return Number(balanceWei) / (10 ** ARENA_DECIMALS);
+    } catch (err) {
+        console.warn('[Blockchain] getArenaBalance failed:', err.message);
+        return 0;
+    }
+}
+
+/**
+ * Deduct play tokens from a player (onlyOwner on contract). Used when agent makes a non-HOLD decision.
+ * @param {string} arenaAddress - ArenaTreasury address
+ * @param {string} playerAddress - Wallet to deduct from
+ * @param {number} amountUsdc - Amount in whole units (6 decimals)
+ * @returns {Promise<{ success: boolean, txHash?: string, error?: string }>}
+ */
+async function deductPlay(arenaAddress, playerAddress, amountUsdc) {
+    const contract = getArenaContract(arenaAddress, true);
+    if (!contract) return { success: false, error: 'Arena not configured' };
+    const amountWei = BigInt(Math.floor(amountUsdc)) * BigInt(10 ** ARENA_DECIMALS);
+    if (amountWei === 0n) return { success: false, error: 'Zero amount' };
+    try {
+        const tx = await contract.deductPlay(playerAddress, amountWei);
+        const receipt = await tx.wait();
+        return { success: true, txHash: receipt.hash };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
 module.exports = {
     getProvider,
     getTreasurySigner,
+    getAgentSigner,
     getTreasuryContract,
+    getArenaContract,
+    getArenaBalance,
+    deductPlay,
     isBlockchainEnabled,
     getProfitSweptEvents,
+    approveUsdcForTreasury,
+    USDC_SEPOLIA,
 };

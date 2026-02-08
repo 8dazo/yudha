@@ -1,101 +1,93 @@
-# 🧠 Yudha (PsycheFi): The AI Agent Trading Arena
+# Yudha — AI Agent Trading Arena
 
-**Where distinct AI personalities battle for alpha using Yellow, Uniswap v4, LI.FI, and Arc.**
+Multi-agent trading arena where four AI personalities make live market decisions across Yellow Network, Uniswap v4, LI.FI, and Arc (USDC). Profits are swept on-chain into an Arc treasury on Sepolia.
 
-## 💡 The Concept
-Yudha (PsycheFi) is an experimental trading platform where users don't place trades—they back **AI Agents** with distinct psychological profiles. We utilize Large Language Models (via OpenRouter) to simulate "Diamond Hands," "Panic Sellers," "Calculated Arbitrageurs," and "Passive Yield Farmers."
+## Concept
 
-These agents don't just talk; they execute transactions on-chain across multiple protocols to prove which "mindset" is the most profitable.
+Yudha is a trading platform where **AI agents** with distinct personalities (Degen Dave, Stable Sarah, Chad Bridge, Corporate Ken) make decisions. Each agent is tied to a protocol; the backend runs OpenRouter for AI, fetches market data, and executes Arc USDC sweeps server-side—no frontend transaction prompts for treasury flows.
 
-## 🏆 Hackathon Tracks & Integrations
+## Tech Stack
 
-### 1. ⚡ Yellow Network (The Day Trader)
-* **Agent Persona:** "The Scalper" (High frequency, low latency).
-* **Integration:** We utilize the **Yellow SDK** to open state channels.
-* **Logic:** The Scalper agent detects micro-volatility and executes rapid buy/sell orders off-chain without gas, settling the final PnL on-chain only when the session closes.
+| Layer | Stack |
+|-------|--------|
+| **AI** | OpenRouter (LLM), Node.js + Express |
+| **Frontend** | Next.js 14, Tailwind, shadcn/ui, wagmi, RainbowKit |
+| **Contracts** | Solidity (Foundry), ArcTreasury, ArenaTreasury |
+| **Chain** | Ethereum Sepolia (Arc USDC, Arena token) |
 
-### 2. 🦄 Uniswap Foundation (The Liquidity Manager)
-* **Agent Persona:** "The Market Maker" (Neutral, passive).
-* **Integration:** **Uniswap v4 Hooks**.
-* **Logic:** This agent monitors volatility. If the market is calm, it concentrates liquidity (via a custom Hook). If volatility spikes, it widens the range to avoid Impermanent Loss.
+## Repo Structure
 
-### 3. 🦎 LI.FI (The Cross-Chain Nomad)
-* **Agent Persona:** "The Arbitrageur" (Opportunity seeker).
-* **Integration:** **LI.FI SDK/API**.
-* **Logic:** The agent monitors price discrepancies between chains (e.g., ETH vs. Polygon). When a gap is found, it automatically routes funds using LI.FI to capture the arbitrage.
+```
+yudha/
+├── ai-backend/     # Express API: agents, market data, treasury sweep
+├── contracts/      # ArcTreasury, ArenaTreasury (Foundry)
+├── frontend/       # Next.js arena dashboard
+└── README.md
+```
 
-### 4. 🌐 Arc (The Treasury)
-* **Agent Persona:** "The Bank Manager" (Risk-averse).
-* **Integration:** **Arc (USDC)** & Circle ecosystem.
-* **Logic:** Acts as the central treasury. It sweeps profits from the other agents into USDC on Arc to preserve capital. It programmatically manages the "House Funds."
-
----
-
-## 🛠️ Tech Stack
-- **AI Core:** OpenRouter (Llama 3 / Claude Haiku), Node.js (Express).
-- **Frontend:** Next.js 14, Tailwind CSS, shadcn/ui.
-- **Blockchain:** Yellow SDK, Uniswap v4 (Foundry), LI.FI SDK.
-
----
-
-## 📜 Deployed Contracts (Sepolia)
-
-| Contract       | Address | Etherscan |
-|----------------|---------|-----------|
-| **ArcTreasury** | `0xb0B384F0CA720FD334182f650885b9bb22e28F65` | [View on Etherscan](https://sepolia.etherscan.io/address/0xb0B384F0CA720FD334182f650885b9bb22e28F65) |
-
-*ArcTreasury* holds swept USDC from agents; owner can `sweepProfit(agent, amount)` and `withdraw(to, amount)`.
-
----
-
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
-- Node.js v18+
-- Foundry (for Uniswap hooks)
-- OpenRouter API Key
 
-### Installation
+- Node.js 18+
+- pnpm (frontend) or npm
+- [Foundry](https://book.getfoundry.sh/) (for contracts)
+- [OpenRouter](https://openrouter.ai/) API key
 
-1. **Clone the Repo**
-   ```bash
-   git clone https://github.com/yourusername/yudha.git
-   cd yudha
-   ```
+### 1. Backend
 
-2. **Setup Backend (The Brain)**
-   ```bash
-   cd ai-backend
-   npm install
-   cp .env.example .env
-   # Set OPENROUTER_API_KEY. For real-world: RPC_URL, TREASURY_OWNER_PRIVATE_KEY, ARC_TREASURY_ADDRESS, AGENT_WALLET
-   npm start
-   ```
+```bash
+cd ai-backend
+npm install
+cp .env.example .env
+# Set OPENROUTER_API_KEY. For sweep: RPC_URL, TREASURY_OWNER_PRIVATE_KEY, ARC_TREASURY_ADDRESS, AGENT_WALLET, AGENT_WALLET_PRIVATE_KEY
+npm start
+```
 
-3. **Setup Frontend (The Arena)**
-   ```bash
-   cd frontend
-   npm install
-   cp .env.example .env
-   # Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID (WalletConnect Cloud). Optional: NEXT_PUBLIC_API_URL
-   npm run dev
-   ```
+Runs on **http://localhost:3001**. See [ai-backend/README.md](ai-backend/README.md) for env and endpoints.
 
-4. **Deploy Arc Treasury (optional, for on-chain sweep)**  
-   The contract is production-ready (SafeERC20, ReentrancyGuard, two-step ownership). Use account 1 from ai-backend `.env`:
-   ```bash
-   cd contracts
-   # Load keys from backend (or copy ACCOUNT_1_PRIVATE_KEY to PRIVATE_KEY in contracts/.env)
-   set -a && source ../ai-backend/.env && set +a
-   forge script script/DeployYudha.s.sol:DeployYudha --rpc-url $RPC_URL --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY
-   ```
-   Then set `ARC_TREASURY_ADDRESS` in `ai-backend/.env` to the deployed address.
+### 2. Frontend
 
-## 🧠 Agent Personalities
+```bash
+cd frontend
+pnpm install
+# Optional: .env.local with NEXT_PUBLIC_API_URL=http://localhost:3001, NEXT_PUBLIC_ARENA_TREASURY_ADDRESS, etc.
+pnpm dev
+```
 
-| Agent | Personality | Strategy | Protocol Used |
-| --- | --- | --- | --- |
-| **Degen Dave** | Impulsive, high-risk, follows momentum. | Momentum Trading | Yellow Network (Flash trades) |
-| **Stable Sarah** | Cautious, hates drawdowns. | Liquidity Provision | Uniswap v4 (Hooks) |
-| **Chad Bridge** | Agnostic, follows the yield. | Cross-chain Arb | LI.FI |
-| **Corporate Ken** | Greedy but risk-managed. | Treasury Mgmt | Arc (USDC) |
+Runs on **http://localhost:3000**. Dashboard reads from the API; no wallet required for viewing. Connect wallet for Arena balance (Sepolia).
+
+### 3. Contracts (optional)
+
+Arc treasury and Arena (play token) on Sepolia:
+
+```bash
+cd contracts
+# Set RPC_URL, PRIVATE_KEY (or use ai-backend .env)
+forge script script/DeployYudha.s.sol:DeployYudha --rpc-url $RPC_URL --broadcast --verify
+# Arena: script/DeployArena.s.sol
+```
+
+Set `ARC_TREASURY_ADDRESS` and `ARENA_TREASURY_ADDRESS` in `ai-backend/.env`.
+
+## Deployed Contracts (Sepolia)
+
+| Contract | Address |
+|----------|---------|
+| **ArcTreasury** | [`0xb0B384F0CA720FD334182f650885b9bb22e28F65`](https://sepolia.etherscan.io/address/0xb0B384F0CA720FD334182f650885b9bb22e28F65) |
+| **ArenaTreasury** | Deploy via `scripts/deploy-arena-and-mint.js` (see ai-backend) |
+
+ArcTreasury: `sweepProfit(agent, amount)` pulls USDC from agent into treasury; owner can `withdraw(to, amount)`.
+
+## Agents
+
+| Agent | Persona | Protocol |
+|-------|---------|-----------|
+| **Degen Dave** | Momentum, high risk | Yellow Network |
+| **Stable Sarah** | Cautious, liquidity | Uniswap v4 |
+| **Chad Bridge** | Cross-chain arb | LI.FI |
+| **Corporate Ken** | Treasury, USDC sweep | Arc |
+
+## License
+
+MIT
