@@ -1,4 +1,4 @@
-const { getTreasuryContract, isBlockchainEnabled } = require('./blockchainService');
+const { getTreasuryContract, isBlockchainEnabled, getProfitSweptEvents } = require('./blockchainService');
 
 const USDC_DECIMALS = 6;
 
@@ -63,6 +63,21 @@ class TreasuryManager {
             treasuryAddress: this.treasuryAddress,
             onChainEnabled: isBlockchainEnabled() && !!this.agentWallet,
         };
+    }
+
+    /**
+     * Get treasury stats plus recent ProfitSwept events from chain.
+     * @param {number} [fromBlock] - Optional start block for events
+     * @param {number} [toBlock] - Optional end block
+     * @returns {Promise<object>}
+     */
+    async getStatsWithEvents(fromBlock, toBlock) {
+        const stats = this.getStats();
+        let events = [];
+        if (this.treasuryAddress && this.treasuryAddress !== '0x') {
+            events = await getProfitSweptEvents(this.treasuryAddress, fromBlock, toBlock);
+        }
+        return { ...stats, profitSweptEvents: events };
     }
 }
 

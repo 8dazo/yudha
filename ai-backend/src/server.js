@@ -13,9 +13,11 @@ app.use(morgan('dev'));
 app.use(express.json());
 
 const agentRoutes = require('./routes/agentRoutes');
+const treasuryRoutes = require('./routes/treasuryRoutes');
 
 // Routes
 app.use('/api/agents', agentRoutes);
+app.use('/api/treasury', treasuryRoutes);
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });

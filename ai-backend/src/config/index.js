@@ -3,6 +3,8 @@ require('dotenv').config();
 module.exports = {
   PORT: process.env.PORT || 3001,
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+  /** OpenRouter model: e.g. liquid/lfm-2.5-1.2b-thinking:free */
+  OPENROUTER_MODEL: process.env.OPENROUTER_MODEL || 'liquid/lfm-2.5-1.2b-thinking:free',
   NODE_ENV: process.env.NODE_ENV || 'development',
   RPC_URL: process.env.RPC_URL,
   TREASURY_OWNER_PRIVATE_KEY: process.env.TREASURY_OWNER_PRIVATE_KEY,

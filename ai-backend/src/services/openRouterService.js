@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { OPENROUTER_API_KEY } = require('../config');
+const { OPENROUTER_API_KEY, OPENROUTER_MODEL } = require('../config');
 
 const openRouter = axios.create({
     baseURL: 'https://openrouter.ai/api/v1',
@@ -19,17 +19,14 @@ const openRouter = axios.create({
  */
 const getAgentDecision = async (personality, marketData) => {
     if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === 'your_openrouter_api_key_here') {
-        // Development fallback for demo purposes
-        return {
-            action: Math.random() > 0.5 ? 'BUY' : 'HOLD',
-            amount: Math.floor(Math.random() * 5) + 1,
-            thought: `[DEV MODE] Analyzing price at ${marketData.price}. Momentum seems ${marketData.change24h > 0 ? 'bullish' : 'bearish'}. Looking for ${personality.split(',')[0]} opportunities.`,
-        };
+        const err = new Error('OpenRouter not configured: set OPENROUTER_API_KEY in .env for real AI decisions');
+        err.code = 'OPENROUTER_NOT_CONFIGURED';
+        throw err;
     }
 
     try {
         const response = await openRouter.post('/chat/completions', {
-            model: 'meta-llama/llama-3-8b-instruct:free', // Defaulting to a free model for setup
+            model: OPENROUTER_MODEL,
             messages: [
                 { role: 'system', content: personality },
                 {
