@@ -15,8 +15,11 @@ import {Ownable2Step} from "@openzeppelin/access/Ownable2Step.sol";
 contract ArcTreasury is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    /// @notice Sepolia mock USDC (or mainnet USDC when deployed there)
-    address public constant USDC = 0x1c7D4b196cb02348377EDDf8532Ac82B7f5E26Ed;
+    /// @notice Official Circle USDC on Ethereum Sepolia (see developers.circle.com/stablecoins/usdc-contract-addresses)
+    address public constant USDC = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
+
+    /// @notice Token used for sweeps/withdrawals (USDC or override for tests)
+    address public immutable token;
 
     event ProfitSwept(address indexed agent, uint256 amount);
     event Withdrawn(address indexed to, uint256 amount);
@@ -24,7 +27,11 @@ contract ArcTreasury is Ownable2Step, ReentrancyGuard {
     error ZeroAddress();
     error ZeroAmount();
 
-    constructor(address initialOwner) Ownable(initialOwner) {}
+    /// @param initialOwner Owner of the treasury.
+    /// @param tokenOverride If non-zero, use this instead of USDC (for tests).
+    constructor(address initialOwner, address tokenOverride) Ownable(initialOwner) {
+        token = tokenOverride != address(0) ? tokenOverride : USDC;
+    }
 
     /**
      * @notice Sweep profits from an agent wallet to the treasury.
@@ -34,7 +41,7 @@ contract ArcTreasury is Ownable2Step, ReentrancyGuard {
     function sweepProfit(address _agent, uint256 _amount) external onlyOwner nonReentrant {
         if (_agent == address(0)) revert ZeroAddress();
         if (_amount == 0) revert ZeroAmount();
-        IERC20(USDC).safeTransferFrom(_agent, address(this), _amount);
+        IERC20(token).safeTransferFrom(_agent, address(this), _amount);
         emit ProfitSwept(_agent, _amount);
     }
 
@@ -46,7 +53,7 @@ contract ArcTreasury is Ownable2Step, ReentrancyGuard {
     function withdraw(address _to, uint256 _amount) external onlyOwner nonReentrant {
         if (_to == address(0)) revert ZeroAddress();
         if (_amount == 0) revert ZeroAmount();
-        IERC20(USDC).safeTransfer(_to, _amount);
+        IERC20(token).safeTransfer(_to, _amount);
         emit Withdrawn(_to, _amount);
     }
 }

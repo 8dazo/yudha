@@ -10,7 +10,7 @@ const USDC_DECIMALS = 6;
 class TreasuryManager {
     constructor() {
         this.treasuryAddress = process.env.ARC_TREASURY_ADDRESS || '0x';
-        this.usdcAddress = '0x1c7D4b196cb02348377EDDf8532Ac82B7f5E26Ed'; // Mock USDC on Sepolia
+        this.usdcAddress = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'; // Official Circle USDC on Sepolia
         this.profits = {};
         this.agentWallet = process.env.AGENT_WALLET || null; // Wallet that holds USDC and has approved treasury
     }

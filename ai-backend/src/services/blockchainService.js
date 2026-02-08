@@ -58,9 +58,39 @@ function isBlockchainEnabled() {
     return !!(RPC_URL && TREASURY_OWNER_PRIVATE_KEY && process.env.ARC_TREASURY_ADDRESS);
 }
 
+/**
+ * Fetch ProfitSwept events from ArcTreasury (for monitoring / dashboard).
+ * @param {string} treasuryAddress - ArcTreasury contract address
+ * @param {number} [fromBlock] - Start block (default: current - 10000)
+ * @param {number} [toBlock] - End block (default: latest)
+ * @returns {Promise<Array<{ agent: string, amount: string, blockNumber: number, transactionHash: string }>>}
+ */
+async function getProfitSweptEvents(treasuryAddress, fromBlock, toBlock) {
+    const contract = getTreasuryContract(treasuryAddress, false);
+    if (!contract) return [];
+    const provider = getProvider();
+    if (!provider) return [];
+    const current = await provider.getBlockNumber();
+    const from = fromBlock != null ? fromBlock : Math.max(0, current - 10000);
+    const to = toBlock != null ? toBlock : 'latest';
+    try {
+        const events = await contract.queryFilter(contract.filters.ProfitSwept(), from, to);
+        return events.map((e) => ({
+            agent: e.args?.agent ?? e.args[0],
+            amount: e.args?.amount != null ? e.args.amount.toString() : (e.args && e.args[1] ? e.args[1].toString() : '0'),
+            blockNumber: e.blockNumber,
+            transactionHash: e.transactionHash,
+        }));
+    } catch (err) {
+        console.warn('[Blockchain] getProfitSweptEvents failed:', err.message);
+        return [];
+    }
+}
+
 module.exports = {
     getProvider,
     getTreasurySigner,
     getTreasuryContract,
     isBlockchainEnabled,
+    getProfitSweptEvents,
 };

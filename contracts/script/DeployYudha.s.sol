@@ -20,7 +20,7 @@ contract DeployYudha is Script {
 
         address deployer = vm.addr(deployerPrivateKey);
         vm.startBroadcast(deployerPrivateKey);
-        treasury = new ArcTreasury(deployer);
+        treasury = new ArcTreasury(deployer, address(0));
         vm.stopBroadcast();
 
         console.log("ArcTreasury deployed at:", address(treasury));

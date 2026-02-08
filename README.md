@@ -42,7 +42,7 @@ These agents don't just talk; they execute transactions on-chain across multiple
 
 | Contract       | Address | Etherscan |
 |----------------|---------|-----------|
-| **ArcTreasury** | `0x894aDc69849EF8d606845b4f8543986FBF86746d` | [View on Etherscan](https://sepolia.etherscan.io/address/0x894aDc69849EF8d606845b4f8543986FBF86746d) |
+| **ArcTreasury** | `0xb0B384F0CA720FD334182f650885b9bb22e28F65` | [View on Etherscan](https://sepolia.etherscan.io/address/0xb0B384F0CA720FD334182f650885b9bb22e28F65) |
 
 *ArcTreasury* holds swept USDC from agents; owner can `sweepProfit(agent, amount)` and `withdraw(to, amount)`.
 

@@ -3,8 +3,8 @@ pragma solidity ^0.8.24;
 
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/types/BeforeSwapDelta.sol";
 
@@ -16,7 +16,7 @@ contract VolatilityHook is IHooks {
     uint24 public constant BASE_FEE = 3000; // 0.3%
     uint24 public currentVolatilityMultiplier = 100; // 100 = 1x
     address public owner;
-    IPoolManager public immutable poolManager;
+    IPoolManager public poolManager;
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner");
@@ -26,6 +26,18 @@ contract VolatilityHook is IHooks {
     constructor(IPoolManager _poolManager) {
         poolManager = _poolManager;
         owner = msg.sender;
+    }
+
+    /// @notice Set pool manager (for test etch pattern when storage is empty). Callable only once.
+    function setManager(IPoolManager _poolManager) external {
+        require(address(poolManager) == address(0), "Manager already set");
+        poolManager = _poolManager;
+    }
+
+    /// @notice Set owner (for test etch pattern when storage is empty). Callable only once.
+    function setOwner(address _owner) external {
+        require(owner == address(0), "Owner already set");
+        owner = _owner;
     }
 
     /**
@@ -63,8 +75,9 @@ contract VolatilityHook is IHooks {
 
     function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata) external view override returns (bytes4, BeforeSwapDelta, uint24) {
         uint24 dynamicFee = BASE_FEE * currentVolatilityMultiplier / 100;
-        if (dynamicFee > 1000000) dynamicFee = 1000000;
-        return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, dynamicFee);
+        if (dynamicFee > LPFeeLibrary.MAX_LP_FEE) dynamicFee = LPFeeLibrary.MAX_LP_FEE;
+        // Set override flag so the pool uses this fee for the swap (required for dynamic-fee pools in v4)
+        return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, dynamicFee | LPFeeLibrary.OVERRIDE_FEE_FLAG);
     }
 
     function afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata) external pure override returns (bytes4, int128) {
